@@ -1,0 +1,80 @@
+$tg__white: #fff;
+$tg__dark: #333333;
+$tg__grey: #9d9d9d;
+$tg__error: #ff4b34;
+
+[class^="tg__"] {
+  -webkit-box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  box-sizing: border-box;
+}
+
+.tg__container {
+  position: relative;
+  background-color: $tg__white;
+}
+
+.tg__container .tg__input,
+.tg__container .tg__mask {
+  background-color: transparent;
+}
+
+.tg__container .tg__input {
+  position: relative;
+  z-index: 2;
+}
+
+.tg__container .tg__mask {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  color: $tg__grey;
+  outline: none;
+  box-shadow: none;
+}
+
+.tg__container .tg__loader {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  height: 0;
+  width: 0;
+  padding: 8px;
+  border: 3px solid rgba($tg__grey, .7);
+  border-right-color: rgba($tg__dark, .7);
+  border-radius: 22px;
+  animation: tg__rotate 1s infinite linear;
+}
+
+.tg__container .tg__error_message {
+  position: absolute;
+  right: 8px;
+  top: 10px;
+  width: 16px;
+  height: 16px;
+  line-height: 16px;
+  border-radius: 50%;
+  background-color: rgba($tg__error, .9);
+
+  &::before {
+    position: absolute;
+    content: '!';
+    text-align: center;
+    width: inherit;
+    height: inherit;
+    font-weight: bold;
+    font-size: .65em;
+    color: $tg__white;
+  }
+}
+
+@-webkit-keyframes tg__rotate {
+  100% {
+    -webkit-transform: rotate(360deg);
+  }
+}
