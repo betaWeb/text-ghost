@@ -8,6 +8,7 @@
 	<link rel="stylesheet" href="https://unpkg.com/spectre.css/dist/spectre-icons.min.css">
 </head>
 <body>
+	<div id="autocomplete"></div>
 	<div class="container">
 		<div class="columns">
 			<div class="column col-4 col-mx-auto">
@@ -21,21 +22,32 @@
 
 	<script type="text/javascript" src="../dist/text-ghost.min.js"></script>
 	<script type="text/javascript">
-		document.addEventListener('DOMContentLoaded', function () {
+        document.addEventListener('DOMContentLoaded', function () {
 
-		    const text_ghost = new TextGhost(
-		        'input[name="search"]',
-				['Vettel', 'Hamilton', 'Verstappen', 'Leclerc', 'Gasly', 'Ricciardo', 'Bottas'],
-				{
-				    beforeInput() {
-				        return fetch('https://jsonplaceholder.typicode.com/users')
-							.then(response => response.json())
-							.then(users => text_ghost.list = users.map(user => user.name))
+            let results = []
+            const text_ghost = new TextGhost(
+                'input[name="search"]',
+                null,
+                {
+                    beforePredicate(value) {
+                        return fetch(`https://geocoder.tilehosting.com/fr/q/${value}.js?key=Of2UNAvCI29lUlqrAE6V`)
+                            .then(response => response.json())
+                            .then(response => {
+                                response.results.forEach(({name}) => {
+                                    if (name.length > 2 && !text_ghost.list.includes(name))
+                                        text_ghost.list.push(name)
+								})
+								results = response.results
+							})
+                    },
+					onPredicate(predicate) {
+                        const infos = results.filter(item => item.name.toLowerCase() === predicate.toLowerCase())
+                        console.log(infos[0])
 					}
-				}
-			)
+                }
+            )
 
-		})
+        })
 	</script>
 </body>
 </html>

@@ -5,28 +5,37 @@ const DEFAULT_OPTIONS = {
     mask_default_value: '',
     case_sensitive: false,
     min_length: 2,
+    enable_loader: true,
     cls: {
         container: 'tg__container',
         input: 'tg__input',
         mask: 'tg__mask',
-        loader: 'tg__loader',
-        error_message: 'tg__error_message'
+        loader: 'tg__loader'
     },
-    beforeInput() {
-        return Promise.resolve()
-    }
+    beforePredicate() {},
+    onPredicate(predicate) {},
+    onError(err) {
+        console.error(err)
+    },
+    predicateFn: null,
 }
 
 class TextGhost {
 
-    constructor(element, list, options = {}) {
+    /**
+     *
+     * @param {HTMLInputElement|String} element
+     * @param {Array|null} list
+     * @param {Object|null} options
+     */
+    constructor(element, list = [], options = {}) {
         if (!element) throw new UndefinedElementException('[Err] TextGhost.constructor')
 
-        this._element = element.constructor === HTMLElement
+        this._element = element.constructor === HTMLInputElement
             ? element
             : document.querySelector(element)
 
-        this._list = list
+        this._list = list || []
 
         this._options = {
             ...DEFAULT_OPTIONS,
@@ -34,6 +43,7 @@ class TextGhost {
         }
 
         this._buildHtml()
+        this._bindContextOnEvents()
     }
 
     /**
@@ -41,6 +51,13 @@ class TextGhost {
      */
     get element() {
         return this._element
+    }
+
+    /**
+     * @return {Array}
+     */
+    get list() {
+        return this._list
     }
 
     /**
@@ -58,15 +75,12 @@ class TextGhost {
      * @private
      */
     _buildHtml() {
-        const input = this._element.cloneNode()
-        const container = document.createElement('div')
+        const clonedElement = this._element.cloneNode()
+        this._container = document.createElement('div')
         this._mask = document.createElement('input')
-        this._loader = document.createElement('div')
-        this._error = document.createElement('div')
-        container.classList.add(this._options.cls.container)
 
-        if (input.classList.value.length)
-            this._mask.classList.add(input.classList.value)
+        if (clonedElement.classList.value.length)
+            this._mask.classList.add(clonedElement.classList.value)
 
         this._mask.classList.add(this._options.cls.mask)
         this._mask.setAttribute('readonly', '')
@@ -75,25 +89,35 @@ class TextGhost {
         if (this._options.mask_default_value.length)
             this._setMaskValue()
 
-        input.removeAttribute('placeholder')
-        input.classList.add(this._options.cls.input)
-        input.setAttribute('tabindex', '-1')
+        clonedElement.removeAttribute('placeholder')
+        clonedElement.classList.add(this._options.cls.input)
+        clonedElement.setAttribute('tabindex', '-1')
 
-        input.addEventListener('keydown', this._onTabKey.bind(this))
-        input.addEventListener('keyup', debounce(this._onInput.bind(this), 500).bind(this))
+        clonedElement.addEventListener('keydown', this._onTabKey.bind(this))
+        clonedElement.addEventListener('keyup', debounce(this._onInput.bind(this), 500))
 
-        this._loader.classList.add(this._options.cls.loader)
-        this._error.classList.add(this._options.cls.error_message)
+        this._container.classList.add(this._options.cls.container)
+        this._container.appendChild(clonedElement)
+        this._container.appendChild(this._mask)
 
-        this._loader.style.display = 'none'
-        this._error.style.display = 'none'
+        this._buildLoader()
 
-        container.appendChild(input)
-        container.appendChild(this._mask)
-        container.appendChild(this._loader)
-        container.appendChild(this._error)
-        this._element.parentNode.replaceChild(container, this._element)
-        this._element = input
+        this._element.parentNode.replaceChild(this._container, this._element)
+        this._element = clonedElement
+    }
+
+    /**
+     * Build loader HTML element
+     *
+     * @private
+     */
+    _buildLoader() {
+        if (this._options.enable_loader) {
+            this._loader = document.createElement('div')
+            this._loader.classList.add(this._options.cls.loader)
+            this._loader.style.display = 'none'
+            this._container.appendChild(this._loader)
+        }
     }
 
     /**
@@ -116,21 +140,21 @@ class TextGhost {
      * @private
      */
     _onInput(e) {
-        this._error.title = ''
-        this._error.style.display = 'none'
-
-        if (e.key !== 'Tab') {
+        if (e.key === 'Tab') {
+            e.preventDefault()
+            e.stopPropagation()
+        } else {
             if (!(e.ctrlKey && e.key === 'Backspace') && this._element.value.length >= this._options.min_length) {
-                this._loader.style.display = 'block'
-                this._options.beforeInput()
-                    .catch(err => {
-                        this._error.title = err
-                        this._error.style.display = ''
-                    })
-                    .then(() => {
-                        this._setMaskValue(this._findPredicate())
-                    })
-                    .finally(() => this._loader.style.display = 'none')
+                this._options.enable_loader && (this._loader.style.display = 'block')
+
+                let promise = this._options.beforePredicate(this._element.value)
+
+                if (!promise || promise.constructor !== Promise)
+                    promise = Promise.resolve()
+
+                promise.catch(this._options.onError)
+                    .then(() => this._setMaskValue(this._findPredicate()))
+                    .finally(() => this._options.enable_loader && (this._loader.style.display = 'none'))
             } else
                 this._setMaskValue()
         }
@@ -153,6 +177,9 @@ class TextGhost {
      * @private
      */
     _findPredicate() {
+        if (this._options.predicateFn && this._options.predicateFn.constructor === Function)
+            return this._options.predicateFn(this._element.value, this._list)
+
         let predicate = this._list.find(item => {
             let value = this._element.value
             if (!this._options.case_sensitive) {
@@ -162,11 +189,21 @@ class TextGhost {
             return item.startsWith(value)
         }) || ''
 
-        if (this._options.case_sensitive) {
+        if (this._options.case_sensitive)
             return predicate
-        }
 
-        return predicate.toLowerCase()
+        predicate = predicate.toLowerCase()
+
+        this._options.onPredicate(predicate)
+
+        return predicate
+    }
+
+    _bindContextOnEvents() {
+        ['beforePredicate', 'onPredicate', 'predicateFn', 'onError'].forEach(fn => {
+            if (this._options[fn] && this._options[fn].constructor === Function)
+                this._options[fn].bind(this)
+        })
     }
 
 }
