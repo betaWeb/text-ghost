@@ -29,14 +29,12 @@
                 'input[name="search"]',
                 null,
                 {
+                    case_sensitive: true,
                     beforePredicate(value) {
                         return fetch(`https://geocoder.tilehosting.com/fr/q/${value}.js?key=Of2UNAvCI29lUlqrAE6V`)
                             .then(response => response.json())
                             .then(response => {
-                                response.results.forEach(({name}) => {
-                                    if (name.length > 2 && !text_ghost.list.includes(name))
-                                        text_ghost.list.push(name)
-								})
+                                response.results.forEach(({name}) => (name.length > 2 && !text_ghost.list.includes(name)) && (text_ghost.list.push(name) && text_ghost.list.push(name.toLowerCase())))
 								results = response.results
 							})
                     },

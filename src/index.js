@@ -1,4 +1,3 @@
-const UndefinedElementException = require('./UndefinedElementException')
 const {isServerSide, isBrowserSide, debounce} = require('./Utils')
 
 const DEFAULT_OPTIONS = {
@@ -12,8 +11,10 @@ const DEFAULT_OPTIONS = {
         mask: 'tg__mask',
         loader: 'tg__loader'
     },
-    beforePredicate() {},
-    onPredicate(predicate) {},
+    beforePredicate() {
+    },
+    onPredicate(predicate) {
+    },
     onError(err) {
         console.error(err)
     },
@@ -24,24 +25,21 @@ class TextGhost {
 
     /**
      *
-     * @param {HTMLInputElement|String} element
+     * @param {HTMLInputElement|HTMLTextAreaElement|HTMLDivElement|String} selector
      * @param {Array|null} list
      * @param {Object|null} options
      */
-    constructor(element, list = [], options = {}) {
-        if (!element) throw new UndefinedElementException('[Err] TextGhost.constructor')
+    constructor(selector, list = [], options = {}) {
+        if (!selector) throw new Error('[Err] TextGhost.constructor - selector is not defined')
 
-        this._element = element.constructor === HTMLInputElement
-            ? element
-            : document.querySelector(element)
-
+        this._element = selector
         this._list = list || []
-
         this._options = {
             ...DEFAULT_OPTIONS,
             ...options
         }
 
+        this._setSelector()
         this._buildHtml()
         this._bindContextOnEvents()
     }
@@ -70,6 +68,28 @@ class TextGhost {
     }
 
     /**
+     * Returns element value
+     *
+     * @return {String}
+     */
+    getValue() {
+        return this._isContentEditableElement()
+            ? this._element.innerText
+            : this._element.value
+    }
+
+    _setSelector() {
+        if (this._element.constructor === String)
+            this._element = document.querySelector(this._element)
+
+        if (this._element.constructor !== HTMLInputElement &&
+            this._element.constructor !== HTMLTextAreaElement &&
+            !this._isContentEditableElement()
+        )
+            this._element.setAttribute('contenteditable', '')
+    }
+
+    /**
      * Build TextGhost HTML template
      *
      * @private
@@ -77,14 +97,6 @@ class TextGhost {
     _buildHtml() {
         const clonedElement = this._element.cloneNode()
         this._container = document.createElement('div')
-        this._mask = document.createElement('input')
-
-        if (clonedElement.classList.value.length)
-            this._mask.classList.add(clonedElement.classList.value)
-
-        this._mask.classList.add(this._options.cls.mask)
-        this._mask.setAttribute('readonly', '')
-        this._mask.setAttribute('tabindex', '-1')
 
         if (this._options.mask_default_value.length)
             this._setMaskValue()
@@ -98,12 +110,25 @@ class TextGhost {
 
         this._container.classList.add(this._options.cls.container)
         this._container.appendChild(clonedElement)
-        this._container.appendChild(this._mask)
 
+        this._buildMask()
         this._buildLoader()
 
         this._element.parentNode.replaceChild(this._container, this._element)
         this._element = clonedElement
+    }
+
+    _buildMask() {
+        this._mask = document.createElement('div')
+        this._mask.setAttribute('contenteditable', '')
+
+        if (this._element.classList.value.length)
+            this._mask.classList.add(this._element.classList.value)
+
+        this._mask.classList.add(this._options.cls.mask)
+        this._mask.setAttribute('readonly', '')
+        this._mask.setAttribute('tabindex', '-1')
+        this._container.appendChild(this._mask)
     }
 
     /**
@@ -128,8 +153,12 @@ class TextGhost {
         if (e.key === 'Tab') {
             e.preventDefault()
             e.stopPropagation()
-            if (this._element.value !== this._mask.value) {
-                this._element.value = this._mask.value
+            const maskValue = this._mask.innerText
+            if (maskValue.length && this.getValue() !== maskValue) {
+                if (this._isContentEditableElement())
+                    this._element.innerText = maskValue
+                else
+                    this._element.value = maskValue
                 this._setMaskValue()
             }
         }
@@ -144,10 +173,10 @@ class TextGhost {
             e.preventDefault()
             e.stopPropagation()
         } else {
-            if (!(e.ctrlKey && e.key === 'Backspace') && this._element.value.length >= this._options.min_length) {
+            if (!(e.ctrlKey && e.key === 'Backspace') && this.getValue().length >= this._options.min_length) {
                 this._options.enable_loader && (this._loader.style.display = 'block')
 
-                let promise = this._options.beforePredicate(this._element.value)
+                let promise = this._options.beforePredicate(this.getValue())
 
                 if (!promise || promise.constructor !== Promise)
                     promise = Promise.resolve()
@@ -167,7 +196,7 @@ class TextGhost {
      * @private
      */
     _setMaskValue(value = this._options.mask_default_value) {
-        this._mask.value = value
+        this._mask.innerText = value
     }
 
     /**
@@ -177,20 +206,21 @@ class TextGhost {
      * @private
      */
     _findPredicate() {
+        const value = this.getValue()
         if (this._options.predicateFn && this._options.predicateFn.constructor === Function)
-            return this._options.predicateFn(this._element.value, this._list)
+            return this._options.predicateFn(value, this._list)
 
         let predicate = this._list.find(item => {
-            let value = this._element.value
-            if (!this._options.case_sensitive) {
-                value = value.toLowerCase()
-                item = item.toLowerCase()
-            }
-            return item.startsWith(value)
+            const predict = item.startsWith(value)
+            if (!this._options.case_sensitive)
+                return predict || item.toLowerCase().startsWith(value.toLowerCase())
+            return predict
         }) || ''
 
-        if (this._options.case_sensitive)
+        if (this._options.case_sensitive) {
+            this._options.onPredicate(predicate)
             return predicate
+        }
 
         predicate = predicate.toLowerCase()
 
@@ -204,6 +234,10 @@ class TextGhost {
             if (this._options[fn] && this._options[fn].constructor === Function)
                 this._options[fn].bind(this)
         })
+    }
+
+    _isContentEditableElement() {
+        return this._element && this._element.isContentEditable
     }
 
 }
