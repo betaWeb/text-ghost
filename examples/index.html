@@ -27,8 +27,9 @@
             let results = []
             const text_ghost = new TextGhost(
                 'input[name="search"]',
-                null,
+                null, // ['JavaScript', 'PHP', 'Python', 'MySQL', 'NodeJS'],
                 {
+                    search_policy: TextGhost.policies.STARTS_WITH,
                     case_sensitive: true,
                     beforePredicate(value) {
                         return fetch(`https://geocoder.tilehosting.com/fr/q/${value}.js?key=Of2UNAvCI29lUlqrAE6V`)

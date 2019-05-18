@@ -1,9 +1,11 @@
+const Mask = require('./Mask')
 const {isServerSide, isBrowserSide, debounce} = require('./Utils')
 
 const DEFAULT_OPTIONS = {
     mask_default_value: '',
     case_sensitive: false,
     min_length: 2,
+    search_policy: 'starts_with',
     cls: {
         container: 'tg__container',
         input: 'tg__input',
@@ -40,6 +42,19 @@ class TextGhost {
         this._setSelector()
         this._buildHtml()
         this._bindContextOnEvents()
+    }
+
+    /**
+     * Get search policies
+     *
+     * @return {{STARTS_WITH: string, ENDS_WITH: string, CONTAINS: string}}
+     */
+    static get policies() {
+        return {
+            STARTS_WITH: 'starts_with',
+            ENDS_WITH: 'ends_with',
+            CONTAINS: 'contains',
+        }
     }
 
     /**
@@ -98,14 +113,19 @@ class TextGhost {
     _buildHtml() {
         this._container = document.createElement('div')
         this._element.parentNode.appendChild(this._container)
-
-        if (this._options.mask_default_value.length)
-            this._setMaskValue()
-
         this._container.classList.add(this._options.cls.container)
 
         this._buildElement()
-        this._buildMask()
+
+        const mask_css_classes = [this._options.cls.mask, this._element.classList.value]
+        if (this._options.search_policy !== TextGhost.policies.STARTS_WITH)
+            mask_css_classes.push('to-right')
+
+        this._mask = new Mask(
+            this._options.mask_default_value,
+            mask_css_classes.join(' ')
+        )
+        this._mask.appendTo(this._container)
     }
 
     /**
@@ -124,27 +144,6 @@ class TextGhost {
     }
 
     /**
-     * Build TextGhost mask HTML template
-     *
-     * @private
-     */
-    _buildMask() {
-        this._mask = document.createElement('div')
-        this._mask.setAttribute('contenteditable', '')
-
-        if (this._element.classList.value.length)
-            this._mask.classList.add.apply(
-                this._mask.classList,
-                this._element.classList.value.split(' ')
-            )
-
-        this._mask.classList.add(this._options.cls.mask)
-        this._mask.setAttribute('readonly', '')
-        this._mask.setAttribute('tabindex', '-1')
-        this._container.appendChild(this._mask)
-    }
-
-    /**
      * @param {KeyboardEvent} e
      * @private
      */
@@ -152,13 +151,13 @@ class TextGhost {
         if (e.key === 'Tab') {
             e.preventDefault()
             e.stopPropagation()
-            const maskValue = this._mask.innerText
+            const maskValue = this._mask.getValue()
             if (maskValue.length && this.getValue() !== maskValue) {
                 if (this._isContentEditableElement())
                     this._element.innerText = maskValue
                 else
                     this._element.value = maskValue
-                this._setMaskValue()
+                this._mask.setValue()
             }
         }
     }
@@ -179,20 +178,14 @@ class TextGhost {
                     promise = Promise.resolve()
 
                 promise.catch(this._options.onError)
-                    .then(() => this._setMaskValue(this._findPredicate()))
+                    .then(() => {
+                        const predicate = this._findPredicate()
+                        this._options.onPredicate(predicate)
+                        this._mask.setValue(predicate)
+                    })
             } else
-                this._setMaskValue()
+                this._mask.setValue()
         }
-    }
-
-    /**
-     * Set mask input value
-     *
-     * @param {String} value
-     * @private
-     */
-    _setMaskValue(value = this._options.mask_default_value) {
-        this._mask.innerText = value
     }
 
     /**
@@ -207,20 +200,33 @@ class TextGhost {
             return this._options.predicateFn(value, this._list)
 
         let predicate = this._list.find(item => {
-            const predict = item.startsWith(value)
-            if (!this._options.case_sensitive)
-                return predict || item.toLowerCase().startsWith(value.toLowerCase())
-            return predict
+            let predict = null
+            switch (this._options.search_policy) {
+                case TextGhost.policies.CONTAINS:
+                    predict = item.includes(value)
+                    if (!this._options.case_sensitive)
+                        return predict || item.toLowerCase().includes(value.toLowerCase())
+                    return predict
+
+                case TextGhost.policies.ENDS_WITH:
+                    predict = item.endsWith(value)
+                    if (!this._options.case_sensitive)
+                        return predict || item.toLowerCase().endsWith(value.toLowerCase())
+                    return predict
+
+                default:
+                case TextGhost.policies.STARTS_WITH:
+                    predict = item.startsWith(value)
+                    if (!this._options.case_sensitive)
+                        return predict || item.toLowerCase().startsWith(value.toLowerCase())
+                    return predict
+            }
         }) || ''
 
-        if (this._options.case_sensitive) {
-            this._options.onPredicate(predicate)
+        if (this._options.case_sensitive)
             return predicate
-        }
 
         predicate = predicate.toLowerCase()
-
-        this._options.onPredicate(predicate)
 
         return predicate
     }
