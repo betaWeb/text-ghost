@@ -1,6 +1,6 @@
 {
   "name": "text-ghost",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "A JavaScript library providing a simple way to have a watermark style autocompletion.",
   "main": "index.js",
   "scripts": {
