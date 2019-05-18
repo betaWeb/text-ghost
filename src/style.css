@@ -1,0 +1,34 @@
+[class^="tg__"] {
+  -webkit-box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  box-sizing: border-box;
+}
+
+.tg__container {
+  position: relative;
+  background-color: #fff;
+}
+
+.tg__container .tg__input,
+.tg__container .tg__mask {
+  background-color: transparent;
+}
+
+.tg__container .tg__input {
+  position: relative;
+  z-index: 2;
+}
+
+.tg__container .tg__mask {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  color: #9d9d9d;
+  outline: none;
+  box-shadow: none;
+}
