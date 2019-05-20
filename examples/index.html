@@ -13,7 +13,7 @@
 		<div class="columns">
 			<div class="column col-4 col-mx-auto">
 				<div class="form-group">
-					<label class="form-label" for="input-search">Search</label>
+					<label class="form-label" for="input-search">City</label>
 					<input class="form-input" type="text" name="search" id="input-search" placeholder="Your search here...">
 				</div>
 			</div>
@@ -27,11 +27,11 @@
             let results = []
             const text_ghost = new TextGhost(
                 'input[name="search"]',
-                null, // ['JavaScript', 'PHP', 'Python', 'MySQL', 'NodeJS'],
+                ['JavaScript', 'PHP', 'Python', 'MySQL', 'NodeJS', 'ExpressJS', 'VueJS', 'SQL', 'sqlite', 'AdonisJS', 'Java', 'TypeScript'], // null
                 {
-                    search_policy: TextGhost.policies.STARTS_WITH,
-                    case_sensitive: true,
-                    beforePredicate(value) {
+                    case_sensitive: false,
+					search_policy: 'contains',
+                    /*beforePredicate(value) {
                         return fetch(`https://geocoder.tilehosting.com/fr/q/${value}.js?key=Of2UNAvCI29lUlqrAE6V`)
                             .then(response => response.json())
                             .then(response => {
@@ -40,9 +40,9 @@
 							})
                     },
 					onPredicate(predicate) {
-                        const infos = results.filter(item => item.name.toLowerCase() === predicate.toLowerCase())
+                        const infos = results.filter(item => item.name.toLowerCase() === predicate.current().toLowerCase())
                         console.log(infos[0])
-					}
+					}*/
                 }
             )
 

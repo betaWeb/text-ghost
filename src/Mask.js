@@ -30,7 +30,6 @@ class Mask {
      * Set mask value
      *
      * @param {String|null} value
-     * @param {String} search_policy
      * @return {Mask}
      */
     setValue(value = this._defaultValue) {

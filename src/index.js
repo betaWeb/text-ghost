@@ -1,25 +1,6 @@
 const Mask = require('./Mask')
+const Predicate = require('./Predicate')
 const {isServerSide, isBrowserSide, debounce} = require('./Utils')
-
-const DEFAULT_OPTIONS = {
-    mask_default_value: '',
-    case_sensitive: false,
-    min_length: 2,
-    search_policy: 'starts_with',
-    cls: {
-        container: 'tg__container',
-        input: 'tg__input',
-        mask: 'tg__mask'
-    },
-    beforePredicate() {
-    },
-    onPredicate(predicate) {
-    },
-    onError(err) {
-        console.error(err)
-    },
-    predicateFn: null,
-}
 
 class TextGhost {
 
@@ -35,25 +16,35 @@ class TextGhost {
         this._element = selector
         this._list = list || []
         this._options = {
-            ...DEFAULT_OPTIONS,
+            ...TextGhost.DEFAULT_OPTIONS,
             ...options
         }
+        this._lastPredicate = null
 
         this._setSelector()
         this._buildHtml()
         this._bindContextOnEvents()
     }
 
-    /**
-     * Get search policies
-     *
-     * @return {{STARTS_WITH: string, ENDS_WITH: string, CONTAINS: string}}
-     */
-    static get policies() {
+    static get DEFAULT_OPTIONS() {
         return {
-            STARTS_WITH: 'starts_with',
-            ENDS_WITH: 'ends_with',
-            CONTAINS: 'contains',
+            mask_default_value: '',
+            case_sensitive: false,
+            min_length: 2,
+            search_policy: 'starts_with',
+            cls: {
+                container: 'tg__container',
+                input: 'tg__input',
+                mask: 'tg__mask'
+            },
+            beforePredicate() {
+            },
+            onPredicate(predicate) {
+            },
+            onError(err) {
+                console.error(err)
+            },
+            predicateFn: null,
         }
     }
 
@@ -81,14 +72,21 @@ class TextGhost {
     }
 
     /**
+     * Returns last predicate class instance
+     *
+     * @return {Predicate|null}
+     */
+    getLastPredicate() {
+        return this._lastPredicate
+    }
+
+    /**
      * Returns element value
      *
      * @return {String}
      */
     getValue() {
-        return this._isContentEditableElement()
-            ? this._element.innerText
-            : this._element.value
+        return this._element.innerText
     }
 
     /**
@@ -100,7 +98,7 @@ class TextGhost {
 
         if (this._element.constructor !== HTMLInputElement &&
             this._element.constructor !== HTMLTextAreaElement &&
-            !this._isContentEditableElement()
+            !this._element.isContentEditable
         )
             this._element.setAttribute('contenteditable', '')
     }
@@ -118,7 +116,7 @@ class TextGhost {
         this._buildElement()
 
         const mask_css_classes = [this._options.cls.mask, this._element.classList.value]
-        if (this._options.search_policy !== TextGhost.policies.STARTS_WITH)
+        if (this._options.search_policy !== Predicate.POLICIES.STARTS_WITH)
             mask_css_classes.push('to-right')
 
         this._mask = new Mask(
@@ -134,10 +132,19 @@ class TextGhost {
      * @private
      */
     _buildElement() {
-        this._element.removeAttribute('placeholder')
+        if (this._element.constructor === HTMLInputElement || this._element.constructor === HTMLTextAreaElement) {
+            this._originalElement = this._element
+
+            this._originalElement.constructor === HTMLInputElement && (this._originalElement.type = 'hidden')
+            this._originalElement.constructor === HTMLTextAreaElement && (this._originalElement.style.display = 'none')
+
+            this._element = document.createElement('div')
+            this._element.setAttribute('contenteditable', '')
+            this._element.classList.add.apply(this._element.classList, this._originalElement.classList.value.split(' '))
+        }
+
         this._element.classList.add(this._options.cls.input)
         this._element.setAttribute('tabindex', '-1')
-
         this._element.addEventListener('keydown', this._onTabKey.bind(this))
         this._element.addEventListener('keyup', debounce(this._onInput.bind(this), 500))
         this._container.appendChild(this._element)
@@ -148,18 +155,27 @@ class TextGhost {
      * @private
      */
     _onTabKey(e) {
+        if ( e.key === 'Enter') {
+            e.preventDefault()
+            e.stopPropagation()
+        }
+
         if (e.key === 'Tab') {
             e.preventDefault()
             e.stopPropagation()
+
             const maskValue = this._mask.getValue()
             if (maskValue.length && this.getValue() !== maskValue) {
-                if (this._isContentEditableElement())
-                    this._element.innerText = maskValue
-                else
-                    this._element.value = maskValue
+                this._element.innerText = maskValue
                 this._mask.setValue()
+                this._setCursorPosition()
+                this._lastPredicate = null
+                this._setOriginalElementValue()
             }
-        }
+        } else if (this._lastPredicate && e.altKey && e.key === 'ArrowLeft')
+            this._mask.setValue(this._lastPredicate.prev())
+        else if (this._lastPredicate && e.altKey && e.key === 'ArrowRight')
+            this._mask.setValue(this._lastPredicate.next())
     }
 
     /**
@@ -167,24 +183,31 @@ class TextGhost {
      * @private
      */
     _onInput(e) {
-        if (e.key === 'Tab') {
+        const altKey = e.altKey || e.key === 'Alt'
+        const isPredicateSearchKeys = altKey || (altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight'));
+
+        this._setOriginalElementValue()
+
+        if (e.key === 'Tab' || e.key === 'Enter' || isPredicateSearchKeys) {
             e.preventDefault()
             e.stopPropagation()
         } else {
-            if (!(e.ctrlKey && e.key === 'Backspace') && this.getValue().length >= this._options.min_length) {
-                let promise = this._options.beforePredicate(this.getValue())
+            if (!isPredicateSearchKeys) {
+                if (!(e.ctrlKey && e.key === 'Backspace') && this.getValue().length >= this._options.min_length) {
+                    let promise = this._options.beforePredicate(this.getValue())
 
-                if (!promise || promise.constructor !== Promise)
-                    promise = Promise.resolve()
+                    if (!promise || promise.constructor !== Promise)
+                        promise = Promise.resolve()
 
-                promise.catch(this._options.onError)
-                    .then(() => {
-                        const predicate = this._findPredicate()
-                        this._options.onPredicate(predicate)
-                        this._mask.setValue(predicate)
-                    })
-            } else
-                this._mask.setValue()
+                    promise.catch(this._options.onError)
+                        .then(() => {
+                            this._findPredicate()
+                            this._options.onPredicate(this._lastPredicate)
+                            this._mask.setValue(this._lastPredicate.current())
+                        })
+                } else
+                    this._mask.setValue()
+            }
         }
     }
 
@@ -199,36 +222,12 @@ class TextGhost {
         if (this._options.predicateFn && this._options.predicateFn.constructor === Function)
             return this._options.predicateFn(value, this._list)
 
-        let predicate = this._list.find(item => {
-            let predict = null
-            switch (this._options.search_policy) {
-                case TextGhost.policies.CONTAINS:
-                    predict = item.includes(value)
-                    if (!this._options.case_sensitive)
-                        return predict || item.toLowerCase().includes(value.toLowerCase())
-                    return predict
+        this._lastPredicate = new Predicate(this._list, {
+            policy: this._options.search_policy,
+            case_sensitive: this._options.case_sensitive
+        })
 
-                case TextGhost.policies.ENDS_WITH:
-                    predict = item.endsWith(value)
-                    if (!this._options.case_sensitive)
-                        return predict || item.toLowerCase().endsWith(value.toLowerCase())
-                    return predict
-
-                default:
-                case TextGhost.policies.STARTS_WITH:
-                    predict = item.startsWith(value)
-                    if (!this._options.case_sensitive)
-                        return predict || item.toLowerCase().startsWith(value.toLowerCase())
-                    return predict
-            }
-        }) || ''
-
-        if (this._options.case_sensitive)
-            return predicate
-
-        predicate = predicate.toLowerCase()
-
-        return predicate
+        this._lastPredicate.find(value)
     }
 
     /**
@@ -242,11 +241,29 @@ class TextGhost {
     }
 
     /**
-     * @return {boolean}
+     * Move cursor to the end of input
+     *
      * @private
      */
-    _isContentEditableElement() {
-        return this._element && this._element.isContentEditable
+    _setCursorPosition() {
+        let sel, pos = this._element.innerText.length
+        if ('selection' in document) {
+            sel = document.selection.createRange();
+            sel.moveStart('character', pos);
+            sel.select();
+        } else {
+            sel = window.getSelection();
+            sel.collapse(this._element.lastChild, pos);
+        }
+
+        this._element.focus()
+    }
+
+    _setOriginalElementValue() {
+        if (this._originalElement.isContentEditable)
+            this._originalElement.innerText = this.getValue()
+        else
+            this._originalElement.value = this.getValue()
     }
 
 }
